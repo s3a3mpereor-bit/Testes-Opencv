@@ -1,0 +1,19 @@
+import cv2
+
+webcam = cv2.VideoCapture(2)
+
+while True:
+    #ler o video da webcam
+    ret, frame = webcam.read()
+    #Usado para rotacionar a camera frontal do celular
+    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    hsvimage = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsvimage, )
+    cv2.imshow('frame', frame)
+    #fecha a webcam quando pressionar q
+    if cv2.waitKey(40) & 0xFF == ord('q'):
+        break
+
+webcam.release()
+cv2.destroyAllWindows()
+
