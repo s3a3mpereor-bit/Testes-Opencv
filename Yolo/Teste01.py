@@ -1,4 +1,4 @@
-from ultralytics import YOLO
+from ultralytics import YOLO#Fps entre 4 a 6
 import cv2
 import time
 
