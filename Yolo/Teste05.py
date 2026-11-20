@@ -9,24 +9,20 @@ import numpy as np
 import time
 
 N = 2               # detecta a cada N quadros (1 = todos)
-N_DEPTH = 6         # estima profundidade a cada N_DEPTH quadros (pesado na CPU)
-IMGSZ_DEPTH = 768   # tamanho em que os pesos foram treinados (mais preciso)
-DEPTH_MAX = 5.0     # metros, só para colorir o mapa
-MOSTRAR_MAPA = True # janela extra com o mapa de profundidade colorido
+N_DEPTH = 6         
+IMGSZ_DEPTH = 768
+DEPTH_MAX = 5.0     
+MOSTRAR_MAPA = True
 JANELA = 7          # nº de medidas por objeto usadas na mediana temporal
 
-# ---------------- NOVO: distância entre objetos ----------------
-# Campo de visão (graus) do lado LARGO do sensor da webcam. 60 é um chute comum;
-# ajuste conforme sua câmera (ou use FX/FY/CX/CY calibrados abaixo).
 FOV_H_GRAUS = 60.0
-# Se você calibrou a câmera (tabuleiro do OpenCV), preencha em pixels. None = estimar pelo FOV.
 FX = None
 FY = None
 CX = None
 CY = None
 DIST_ALERTA = 0.50      # metros: pares mais próximos que isso ficam vermelhos
-JANELA_PAR = 7          # nº de medidas por par usadas na mediana temporal
-MAX_LINHAS_PAINEL = 6   # quantos pares listar no painel de texto
+JANELA_PAR = 7
+MAX_LINHAS_PAINEL = 6
 EXPORTAR_CSV = True
 ARQUIVO_CSV = "distancias.csv"
 
@@ -34,9 +30,9 @@ model = YOLO('yolo26n.pt')
 model_depth = YOLO('yolo26n-depth.pt')
 webcam = cv2.VideoCapture(2)
 
-escala = 1.0                                            # fator de calibração (real / estimado)
-historico = defaultdict(lambda: deque(maxlen=JANELA))   # histórico por track id
-historico_par = defaultdict(lambda: deque(maxlen=JANELA_PAR))  # NOVO: histórico por par de ids
+escala = 1.0    # fator de calibração (real / estimado)
+historico = defaultdict(lambda: deque(maxlen=JANELA))
+historico_par = defaultdict(lambda: deque(maxlen=JANELA_PAR))
 
 
 def distancia_caixa(depth, xyxy):
@@ -44,7 +40,7 @@ def distancia_caixa(depth, xyxy):
     h, w = depth.shape
     x1, y1, x2, y2 = xyxy
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
-    mw, mh = (x2 - x1) / 4, (y2 - y1) / 4   # metade central = 50% da caixa
+    mw, mh = (x2 - x1) / 4, (y2 - y1) / 4
     xa, xb = int(max(cx - mw, 0)), int(min(cx + mw, w))
     ya, yb = int(max(cy - mh, 0)), int(min(cy + mh, h))
     if xb <= xa or yb <= ya:
@@ -55,9 +51,6 @@ def distancia_caixa(depth, xyxy):
 
 
 def parametros_camera(h, w):
-    """Retorna (fx, fy, cx, cy) em pixels. Usa os valores calibrados ou estima pelo FOV.
-    O FOV vale para o lado largo do sensor, então usamos max(h, w): isso já
-    funciona com o quadro rotacionado em 90 graus."""
     if FX is not None and FY is not None:
         fx, fy = FX, FY
     else:
@@ -69,7 +62,6 @@ def parametros_camera(h, w):
 
 
 def ponto_3d(u, v, z, cam):
-    """Pixel (u, v) + profundidade z (m) -> ponto 3D (X, Y, Z) em metros (modelo pinhole)."""
     fx, fy, cx, cy = cam
     return np.array([(u - cx) * z / fx, (v - cy) * z / fy, z])
 
@@ -86,7 +78,7 @@ depth_fps = 0.0
 ultimo = None
 depth = None
 mapa_cor = None
-brutas = {}   # última distância bruta (sem escala) por objeto, usada na calibração
+brutas = {}
 
 arq_csv = None
 escritor_csv = None
@@ -113,7 +105,7 @@ while True:
     nova_profundidade = False
     if contador % N_DEPTH == 0:
         r = model_depth(frame, imgsz=IMGSZ_DEPTH, verbose=False, device="cpu")[0]
-        depth = r.depth.data.cpu().numpy()   # (H, W) em metros
+        depth = r.depth.data.cpu().numpy()
         nova_profundidade = True
         if MOSTRAR_MAPA:
             mapa_cor = colorize_depth(depth, vmin=0.0, vmax=DEPTH_MAX,
@@ -125,9 +117,8 @@ while True:
 
     frame = ultimo.plot(img=frame)
 
-    # distância de cada objeto rastreado (mediana temporal + escala calibrada)
     brutas = {}
-    objetos = {}   # NOVO: tid -> (xyxy, distância bruta filtrada, nome da classe)
+    objetos = {}
     if depth is not None and ultimo.boxes is not None:
         xyxys = ultimo.boxes.xyxy.cpu().numpy()
         ids = (ultimo.boxes.id.int().cpu().tolist()
@@ -138,7 +129,7 @@ while True:
             if d is None:
                 continue
             if tid is not None:
-                if nova_profundidade:                 # só acumula quando há medida nova
+                if nova_profundidade:
                     historico[tid].append(d)
                 d_filtrada = float(np.median(historico[tid])) if historico[tid] else d
                 brutas[tid] = d_filtrada
@@ -150,8 +141,7 @@ while True:
             cv2.putText(frame, f"{d_final:.2f} m", (x1, min(y2 + 22, frame.shape[0] - 5)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
 
-    # ---------------- NOVO: distância 3D entre todos os pares de objetos ----------------
-    pares_info = []   # (distância estimada, nome_a, id_a, nome_b, id_b)
+    pares_info = []
     if objetos:
         cam = parametros_camera(*frame.shape[:2])
         pontos = {}
@@ -163,12 +153,12 @@ while True:
         for a, b in combinations(sorted(pontos), 2):
             ua, va, Pa, na = pontos[a]
             ub, vb, Pb, nb = pontos[b]
-            d3 = float(np.linalg.norm(Pa - Pb))      # distância 3D em metros
-            dpx = math.hypot(ua - ub, va - vb)       # distância 2D em pixels
-            dz = abs(float(Pa[2] - Pb[2]))           # diferença de profundidade
+            d3 = float(np.linalg.norm(Pa - Pb))
+            dpx = math.hypot(ua - ub, va - vb)
+            dz = abs(float(Pa[2] - Pb[2]))
 
             hist = historico_par[(a, b)]
-            if nova_profundidade:                    # só acumula quando há medida nova
+            if nova_profundidade:
                 hist.append(d3)
             d_est = float(np.median(hist)) if hist else d3
 
@@ -208,7 +198,6 @@ while True:
     cv2.putText(frame, f"escala: x{escala:.2f}  [c]=calibrar  [r]=resetar", (10, 135),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-    # NOVO: painel com os pares mais próximos primeiro
     pares_info.sort(key=lambda p: p[0])
     for i, (d_est, na, a, nb, b) in enumerate(pares_info[:MAX_LINHAS_PAINEL]):
         cor = (0, 0, 255) if d_est < DIST_ALERTA else (0, 255, 0)
@@ -226,7 +215,6 @@ while True:
         escala = 1.0
         print("Escala resetada para x1.00")
     elif tecla == ord('c'):
-        # Calibração de 1 ponto: deixe UM objeto parado a uma distância conhecida
         if len(brutas) != 1:
             print(f"Calibração: precisa de exatamente 1 objeto rastreado (agora: {len(brutas)}).")
         else:

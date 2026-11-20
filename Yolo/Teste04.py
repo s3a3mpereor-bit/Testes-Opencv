@@ -7,17 +7,17 @@ import time
 
 N = 2               # detecta a cada N quadros (1 = todos)
 N_DEPTH = 6         # estima profundidade a cada N_DEPTH quadros (pesado na CPU)
-IMGSZ_DEPTH = 768   # MUDOU: tamanho em que os pesos foram treinados (mais preciso)
-DEPTH_MAX = 5.0     # metros, só para colorir o mapa
-MOSTRAR_MAPA = True # janela extra com o mapa de profundidade colorido
-JANELA = 7          # NOVO: nº de medidas por objeto usadas na mediana temporal
+IMGSZ_DEPTH = 768
+DEPTH_MAX = 5.0    
+MOSTRAR_MAPA = True
+JANELA = 7          # nº de medidas por objeto usadas na mediana temporal
 
 model = YOLO('yolo26n.pt')
 model_depth = YOLO('yolo26n-depth.pt')
 webcam = cv2.VideoCapture(2)
 
-escala = 1.0                                   # NOVO: fator de calibração (real / estimado)
-historico = defaultdict(lambda: deque(maxlen=JANELA))   # NOVO: histórico por track id
+escala = 1.0    # fator de calibração (real / estimado)
+historico = defaultdict(lambda: deque(maxlen=JANELA))
 
 
 def distancia_caixa(depth, xyxy):
@@ -25,7 +25,7 @@ def distancia_caixa(depth, xyxy):
     h, w = depth.shape
     x1, y1, x2, y2 = xyxy
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
-    mw, mh = (x2 - x1) / 4, (y2 - y1) / 4   # metade central = 50% da caixa
+    mw, mh = (x2 - x1) / 4, (y2 - y1) / 4
     xa, xb = int(max(cx - mw, 0)), int(min(cx + mw, w))
     ya, yb = int(max(cy - mh, 0)), int(min(cy + mh, h))
     if xb <= xa or yb <= ya:
@@ -46,7 +46,7 @@ depth_fps = 0.0
 ultimo = None
 depth = None
 mapa_cor = None
-brutas = {}   # NOVO: última distância bruta (sem escala) por objeto, usada na calibração
+brutas = {}
 
 while True:
     ret, frame = webcam.read()
@@ -65,7 +65,7 @@ while True:
     nova_profundidade = False
     if contador % N_DEPTH == 0:
         r = model_depth(frame, imgsz=IMGSZ_DEPTH, verbose=False, device="cpu")[0]
-        depth = r.depth.data.cpu().numpy()   # (H, W) em metros
+        depth = r.depth.data.cpu().numpy()
         nova_profundidade = True
         if MOSTRAR_MAPA:
             mapa_cor = colorize_depth(depth, vmin=0.0, vmax=DEPTH_MAX,
@@ -77,7 +77,6 @@ while True:
 
     frame = ultimo.plot(img=frame)
 
-    # distância de cada objeto rastreado (mediana temporal + escala calibrada)
     brutas = {}
     if depth is not None and ultimo.boxes is not None:
         xyxys = ultimo.boxes.xyxy.cpu().numpy()
@@ -88,7 +87,7 @@ while True:
             if d is None:
                 continue
             if tid is not None:
-                if nova_profundidade:                 # só acumula quando há medida nova
+                if nova_profundidade:
                     historico[tid].append(d)
                 d_filtrada = float(np.median(historico[tid])) if historico[tid] else d
                 brutas[tid] = d_filtrada
@@ -115,7 +114,7 @@ while True:
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
     cv2.putText(frame, f"DEPTH/s: {depth_fps:.1f}", (10, 100),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 200, 0), 2)
-    cv2.putText(frame, f"escala: x{escala:.2f}  [c]=calibrar  [r]=resetar", (10, 135),  # NOVO
+    cv2.putText(frame, f"escala: x{escala:.2f}  [c]=calibrar  [r]=resetar", (10, 135),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
     cv2.imshow('frame', frame)
@@ -125,11 +124,10 @@ while True:
     tecla = cv2.waitKey(1) & 0xFF
     if tecla == ord('q'):
         break
-    elif tecla == ord('r'):                                    # NOVO
+    elif tecla == ord('r'):
         escala = 1.0
         print("Escala resetada para x1.00")
-    elif tecla == ord('c'):                                    # NOVO
-        # Calibração de 1 ponto: deixe UM objeto parado a uma distância conhecida
+    elif tecla == ord('c'):
         if len(brutas) != 1:
             print(f"Calibração: precisa de exatamente 1 objeto rastreado (agora: {len(brutas)}).")
         else:
